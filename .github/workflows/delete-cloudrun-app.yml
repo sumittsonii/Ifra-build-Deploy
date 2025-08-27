@@ -1,4 +1,4 @@
-name: Delete Cloud Run service
+name: Delete Cloud Run Application
 
 on:
   workflow_dispatch:
