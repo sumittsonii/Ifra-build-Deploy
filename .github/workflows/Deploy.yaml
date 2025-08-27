@@ -1,0 +1,46 @@
+name: Deploy to Cloud Run
+
+on:
+  workflow_run:
+    workflows: ["Build & Push to Artifact Registry"]   # name of your build workflow
+    types: [completed]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GAR_LOCATION: ${{ vars.GAR_LOCATION }}
+      REPO_NAME: ${{ vars.REPO_NAME }}
+      IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+      SERVICE_ACCOUNT_EMAIL: ${{ vars.SERVICE_ACCOUNT_EMAIL }}
+      WIF_PROVIDER: ${{ vars.WIF_POOL_PROVIDER }}
+      RUN_SERVICE_NAME: ${{ vars.RUN_SERVICE_NAME }}
+      RUN_REGION: ${{ vars.RUN_REGION }}
+
+    steps:
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: "access_token"
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Deploy the specific commit image (tagged by the build job with the SHA)
+      - name: Deploy to Cloud Run
+        run: |
+          IMAGE_SHA="${{ github.event.workflow_run.head_sha }}"
+          IMAGE="${GAR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}:${IMAGE_SHA}"
+          gcloud run deploy "${RUN_SERVICE_NAME}" \
+            --image="${IMAGE}" \
+            --region="${RUN_REGION}" \
+            --platform=managed \
+            --allow-unauthenticated
